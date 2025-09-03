@@ -18,10 +18,11 @@ app = FastAPI(
 # =====================================================
 # CORS Middleware (MUST be here, at the top)
 # =====================================================
-origins = ["http://localhost:3000", 
-           "http://127.0.0.1:3000"
-           ]
-
+origins = [
+    "http://localhost:3000", 
+    "http://127.0.0.1:3000",
+    "https://coinzo.vercel.app"  # replace with real domain
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
