@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import extract
 from . import models, schemas
 from typing import List, Optional, Dict, Any
 from collections import defaultdict
@@ -91,8 +92,14 @@ def summary_expenses(db: Session, user_id: int, month: str = None, category: str
     daily trends, and comparison to last month.
     """
     q = db.query(models.Expense).filter(models.Expense.user_id == user_id)
+
+    # ✅ Use extract for Year/Month filtering
     if month:
-        q = q.filter(models.Expense.date.like(f"{month}-%"))
+        year, month_num = map(int, month.split("-"))
+        q = q.filter(
+            extract("year", models.Expense.date) == year,
+            extract("month", models.Expense.date) == month_num
+        )
     if category:
         q = q.filter(models.Expense.category == category)
 
@@ -132,9 +139,11 @@ def summary_expenses(db: Session, user_id: int, month: str = None, category: str
         last_month_num = month_num - 1 if month_num > 1 else 12
         last_month = f"{last_month_year}-{str(last_month_num).zfill(2)}"
 
+        last_year, last_month_num = map(int, last_month.split("-"))
         q_last = db.query(models.Expense).filter(
             models.Expense.user_id == user_id,
-            models.Expense.date.like(f"{last_month}-%")
+            extract("year", models.Expense.date) == last_year,
+            extract("month", models.Expense.date) == last_month_num
         )
         last_expenses = q_last.all()
         last_month_total = sum(e.amount for e in last_expenses)
@@ -164,8 +173,14 @@ def report_by_category(db: Session, user_id: int, month: str = None) -> Dict[str
     Returns expense totals grouped by category.
     """
     q = db.query(models.Expense).filter(models.Expense.user_id == user_id)
+
     if month:
-        q = q.filter(models.Expense.date.like(f"{month}-%"))
+        year, month_num = map(int, month.split("-"))
+        q = q.filter(
+            extract("year", models.Expense.date) == year,
+            extract("month", models.Expense.date) == month_num
+        )
+
     cat_total = defaultdict(float)
     for expense in q.all():
         cat_total[expense.category] += expense.amount
