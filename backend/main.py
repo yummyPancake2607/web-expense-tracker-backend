@@ -2,9 +2,9 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal, engine
-from app import crud, schemas, models
-from app.auth import get_current_user
+from backend.db import SessionLocal, engine
+from backend import crud, schemas, models
+from backend.auth import get_current_user
 
 # =====================================================
 # FastAPI App
