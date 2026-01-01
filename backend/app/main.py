@@ -9,6 +9,7 @@ import io
 from backend.app.db import SessionLocal, engine
 from backend.app import crud, schemas, models
 from backend.app.auth import get_current_user
+from backend.app.routers import insights
 
 # =====================================================
 # FastAPI App
@@ -19,13 +20,16 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Include routers
+app.include_router(insights.router)
+
 # =====================================================
-# CORS Middleware (IMPORTANT)
+# CORS Middleware
 # =====================================================
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173",
+    "https://coinzo.vercel.app",  # Deployed frontend
 ]
 
 app.add_middleware(
@@ -37,50 +41,32 @@ app.add_middleware(
 )
 
 # =====================================================
-# Routers
-# =====================================================
-from backend.app.routers import insights
-app.include_router(insights.router)
-
-# =====================================================
 # Database Initialization
 # =====================================================
 models.Base.metadata.create_all(bind=engine)
 
 @app.on_event("startup")
 def on_startup():
-    """
-    Simple migration hack:
-    Adds reminder columns if missing.
-    """
+    """Simple migration to add new columns if missing"""
     import sqlite3
     try:
         conn = sqlite3.connect("expense_tracker.db")
         cursor = conn.cursor()
-
         try:
-            cursor.execute(
-                "ALTER TABLE users ADD COLUMN reminder_enabled BOOLEAN DEFAULT 0"
-            )
-            print("✅ Added reminder_enabled column")
+            cursor.execute("ALTER TABLE users ADD COLUMN reminder_enabled BOOLEAN DEFAULT 0")
         except Exception:
             pass
-
         try:
-            cursor.execute(
-                "ALTER TABLE users ADD COLUMN reminder_time VARCHAR DEFAULT '20:00'"
-            )
-            print("✅ Added reminder_time column")
+            cursor.execute("ALTER TABLE users ADD COLUMN reminder_time VARCHAR DEFAULT '20:00'")
         except Exception:
             pass
-
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"⚠️ Migration Check Warning: {e}")
+        print(f"⚠️ Migration Warning: {e}")
 
 # =====================================================
-# DB Session Dependency
+# Database Session Dependency
 # =====================================================
 def get_db():
     db = SessionLocal()
@@ -90,25 +76,23 @@ def get_db():
         db.close()
 
 # =====================================================
+# Root Endpoint
+# =====================================================
+@app.get("/")
+def read_root():
+    return {"message": "🚀 Expense Tracker API is running!"}
+
+# =====================================================
 # User Preferences
 # =====================================================
 @app.put("/user/preferences", response_model=schemas.User)
 async def update_preferences(
     prefs: schemas.UserPreferences,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.update_user_preferences(db, user.id, prefs)
-
-# =====================================================
-# Root
-# =====================================================
-@app.get("/")
-def read_root():
-    return {"message": "🚀 Expense Tracker API is running!"}
 
 # =====================================================
 # Expenses
@@ -116,22 +100,18 @@ def read_root():
 @app.get("/expenses/", response_model=list[schemas.Expense])
 async def read_expenses(
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.get_expenses(db, user.id)
 
 @app.post("/expenses/", response_model=schemas.Expense)
 async def create_expense(
     expense: schemas.ExpenseCreate,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.create_expense(db, expense, user.id)
 
 @app.put("/expenses/{expense_id}", response_model=schemas.Expense)
@@ -139,25 +119,21 @@ async def update_expense(
     expense_id: int,
     expense: schemas.ExpenseCreate,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
-    out = crud.update_expense(db, expense_id, user.id, expense)
-    if not out:
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
+    updated = crud.update_expense(db, expense_id, user.id, expense)
+    if not updated:
         raise HTTPException(status_code=404, detail="Expense not found or unauthorized")
-    return out
+    return updated
 
 @app.delete("/expenses/{expense_id}")
 async def delete_expense(
     expense_id: int,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     success = crud.delete_expense(db, expense_id, user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Expense not found or unauthorized")
@@ -170,35 +146,29 @@ async def delete_expense(
 async def set_budget(
     budget: schemas.BudgetCreate,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.set_budget(db, user.id, budget)
 
 @app.get("/budgets/{month}", response_model=schemas.Budget)
 async def get_budget(
     month: str,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
-    result = crud.get_budget(db, user.id, month)
-    if not result:
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
+    budget = crud.get_budget(db, user.id, month)
+    if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
-    return result
+    return budget
 
 @app.get("/budgets_all/", response_model=list[schemas.Budget])
 async def get_all_budgets(
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.get_all_budgets(db, user.id)
 
 # =====================================================
@@ -206,47 +176,41 @@ async def get_all_budgets(
 # =====================================================
 @app.get("/summary/")
 async def summary(
-    month: str | None = None,
-    category: str | None = None,
+    month: str = None,
+    category: str = None,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.summary_expenses(db, user.id, month, category)
 
 @app.get("/report_by_category/")
 async def report_by_category(
-    month: str | None = None,
+    month: str = None,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.report_by_category(db, user.id, month)
 
 # =====================================================
-# Export CSV (single correct endpoint)
+# Export CSV
 # =====================================================
 @app.get("/export/expenses")
 async def export_expenses_csv(
     from_date: date,
     to_date: date,
     current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    user = crud.get_or_create_user_by_clerk(
-        db, current_user["clerk_id"], current_user["email"]
-    )
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
 
     expenses = (
         db.query(models.Expense)
         .filter(
             models.Expense.user_id == user.id,
             models.Expense.date >= from_date,
-            models.Expense.date <= to_date,
+            models.Expense.date <= to_date
         )
         .order_by(models.Expense.date)
         .all()
@@ -265,11 +229,8 @@ async def export_expenses_csv(
         ])
 
     output.seek(0)
-
-    filename = f"expenses_{from_date}_to_{to_date}.csv"
-
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": "attachment; filename=expenses.csv"}
     )
