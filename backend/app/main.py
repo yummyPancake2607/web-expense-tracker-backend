@@ -20,29 +20,24 @@ app = FastAPI(
 )
 
 # =====================================================
-# CORS Middleware (🔥 MUST BE BEFORE ROUTES)
+# CORS Middleware (IMPORTANT)
 # =====================================================
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # =====================================================
-# Global OPTIONS handler (extra safety)
-# =====================================================
-@app.options("/{path:path}")
-async def options_handler():
-    return {}
-
-# =====================================================
-# Routers (AFTER CORS)
+# Routers
 # =====================================================
 from backend.app.routers import insights
 app.include_router(insights.router)
@@ -54,6 +49,10 @@ models.Base.metadata.create_all(bind=engine)
 
 @app.on_event("startup")
 def on_startup():
+    """
+    Simple migration hack:
+    Adds reminder columns if missing.
+    """
     import sqlite3
     try:
         conn = sqlite3.connect("expense_tracker.db")
@@ -63,6 +62,7 @@ def on_startup():
             cursor.execute(
                 "ALTER TABLE users ADD COLUMN reminder_enabled BOOLEAN DEFAULT 0"
             )
+            print("✅ Added reminder_enabled column")
         except Exception:
             pass
 
@@ -70,13 +70,14 @@ def on_startup():
             cursor.execute(
                 "ALTER TABLE users ADD COLUMN reminder_time VARCHAR DEFAULT '20:00'"
             )
+            print("✅ Added reminder_time column")
         except Exception:
             pass
 
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"⚠️ Migration Warning: {e}")
+        print(f"⚠️ Migration Check Warning: {e}")
 
 # =====================================================
 # DB Session Dependency
@@ -87,13 +88,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# =====================================================
-# Root
-# =====================================================
-@app.get("/")
-def read_root():
-    return {"message": "🚀 Expense Tracker API is running!"}
 
 # =====================================================
 # User Preferences
@@ -108,6 +102,13 @@ async def update_preferences(
         db, current_user["clerk_id"], current_user["email"]
     )
     return crud.update_user_preferences(db, user.id, prefs)
+
+# =====================================================
+# Root
+# =====================================================
+@app.get("/")
+def read_root():
+    return {"message": "🚀 Expense Tracker API is running!"}
 
 # =====================================================
 # Expenses
@@ -143,10 +144,10 @@ async def update_expense(
     user = crud.get_or_create_user_by_clerk(
         db, current_user["clerk_id"], current_user["email"]
     )
-    updated = crud.update_expense(db, expense_id, user.id, expense)
-    if not updated:
+    out = crud.update_expense(db, expense_id, user.id, expense)
+    if not out:
         raise HTTPException(status_code=404, detail="Expense not found or unauthorized")
-    return updated
+    return out
 
 @app.delete("/expenses/{expense_id}")
 async def delete_expense(
@@ -157,7 +158,8 @@ async def delete_expense(
     user = crud.get_or_create_user_by_clerk(
         db, current_user["clerk_id"], current_user["email"]
     )
-    if not crud.delete_expense(db, expense_id, user.id):
+    success = crud.delete_expense(db, expense_id, user.id)
+    if not success:
         raise HTTPException(status_code=404, detail="Expense not found or unauthorized")
     return {"success": True}
 
@@ -184,10 +186,10 @@ async def get_budget(
     user = crud.get_or_create_user_by_clerk(
         db, current_user["clerk_id"], current_user["email"]
     )
-    budget = crud.get_budget(db, user.id, month)
-    if not budget:
+    result = crud.get_budget(db, user.id, month)
+    if not result:
         raise HTTPException(status_code=404, detail="Budget not found")
-    return budget
+    return result
 
 @app.get("/budgets_all/", response_model=list[schemas.Budget])
 async def get_all_budgets(
@@ -226,7 +228,7 @@ async def report_by_category(
     return crud.report_by_category(db, user.id, month)
 
 # =====================================================
-# Export CSV
+# Export CSV (single correct endpoint)
 # =====================================================
 @app.get("/export/expenses")
 async def export_expenses_csv(
@@ -255,12 +257,19 @@ async def export_expenses_csv(
     writer.writerow(["Date", "Category", "Amount", "Description"])
 
     for e in expenses:
-        writer.writerow([e.date, e.category, e.amount, e.description or ""])
+        writer.writerow([
+            e.date,
+            e.category,
+            e.amount,
+            getattr(e, "description", ""),
+        ])
 
     output.seek(0)
+
+    filename = f"expenses_{from_date}_to_{to_date}.csv"
 
     return StreamingResponse(
         output,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=expenses.csv"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
