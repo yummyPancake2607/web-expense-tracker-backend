@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, Date, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
@@ -21,6 +21,7 @@ class Expense(Base):
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False)
+    is_anomaly = Column(Boolean, default=False)
 
     owner = relationship("User", back_populates="expenses")
 

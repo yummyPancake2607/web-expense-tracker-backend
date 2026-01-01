@@ -1,15 +1,14 @@
-import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-raw_url = os.getenv("DATABASE_URL")
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR) # point to backend/
+DB_FILE = os.path.join(PARENT_DIR, "expense_tracker.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE}"
 
-# Force psycopg3 instead of psycopg2
-if raw_url and raw_url.startswith("postgres://"):
-    raw_url = raw_url.replace("postgres://", "postgresql+psycopg://", 1)
-elif raw_url and raw_url.startswith("postgresql://"):
-    raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
-
-engine = create_engine(raw_url, pool_pre_ping=True)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -13,6 +13,7 @@ class ExpenseCreate(ExpenseBase):
 
 class Expense(ExpenseBase):
     id: int
+    is_anomaly: bool = False
     class Config:
         orm_mode = True
 

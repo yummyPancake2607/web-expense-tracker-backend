@@ -1,10 +1,18 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from datetime import datetime
+from fastapi.responses import StreamingResponse
+from datetime import date
+import csv
+import io
 
-from backend.db import SessionLocal, engine
-from backend import crud, schemas, models
-from backend.auth import get_current_user
+
+from backend.app.db import SessionLocal, engine
+from backend.app import crud, schemas, models
+from backend.app.auth import get_current_user
+
 
 # =====================================================
 # FastAPI App
@@ -15,14 +23,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
+from backend.app.routers import insights
+app.include_router(insights.router)
+
+
 # =====================================================
 # CORS Middleware (MUST be here, at the top)
 # =====================================================
-origins = [
-    "http://localhost:3000", 
-    "http://127.0.0.1:3000",
-    "https://coinzo.vercel.app"  # replace with real domain
-]
+origins = ["http://localhost:3000", 
+           "http://127.0.0.1:3000"
+           ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -115,3 +126,87 @@ async def summary(month: str = None, category: str = None, current_user: dict = 
 async def report_by_category(month: str = None, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
     return crud.report_by_category(db, user.id, month) 
+# =====================================================
+# Export CSV
+# =====================================================
+@app.get("/export/expenses/csv")
+async def export_expenses_csv(
+    from_date: str,
+    to_date: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = crud.get_or_create_user_by_clerk(
+        db, current_user["clerk_id"], current_user["email"]
+    )
+
+    try:
+        start = datetime.strptime(from_date, "%Y-%m-%d").date()
+        end = datetime.strptime(to_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+
+    if start > end:
+        raise HTTPException(status_code=400, detail="From date cannot be after To date")
+
+    csv_file = crud.export_expenses_csv(
+        db=db,
+        user_id=user.id,
+        start_date=start,
+        end_date=end
+    )
+
+    filename = f"expenses_{from_date}_to_{to_date}.csv"
+
+    return StreamingResponse(
+        csv_file,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+@app.get("/export/expenses")
+async def export_expenses_csv(
+    from_date: date,
+    to_date: date,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = crud.get_or_create_user_by_clerk(
+        db, current_user["clerk_id"], current_user["email"]
+    )
+
+    expenses = (
+        db.query(models.Expense)
+        .filter(
+            models.Expense.user_id == user.id,
+            models.Expense.date >= from_date,
+            models.Expense.date <= to_date
+        )
+        .order_by(models.Expense.date)
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # CSV Header
+    writer.writerow(["Date", "Category", "Amount", "Description"])
+
+    for e in expenses:
+        writer.writerow([
+            e.date,
+            e.category,
+            e.amount,
+            getattr(e, "description", ""),
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=expenses.csv"
+        }
+    )
