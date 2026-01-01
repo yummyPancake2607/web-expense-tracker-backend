@@ -37,8 +37,14 @@ class UserCreate(UserBase):
 
 class User(UserBase):
     id: int
+    reminder_enabled: bool
+    reminder_time: str
     class Config:
         orm_mode = True
+
+class UserPreferences(BaseModel):
+    reminder_enabled: bool
+    reminder_time: str
 
 class Summary(BaseModel):
     total: float

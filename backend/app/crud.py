@@ -23,6 +23,18 @@ def get_or_create_user_by_clerk(db: Session, clerk_id: str, email: str) -> model
         db.refresh(user)
     return user
 
+def update_user_preferences(db: Session, user_id: int, preferences: schemas.UserPreferences) -> models.User:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    
+    user.reminder_enabled = preferences.reminder_enabled
+    user.reminder_time = preferences.reminder_time
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
 # =====================================================
 # Expense Functions
 # =====================================================

@@ -45,7 +45,40 @@ app.add_middleware(
 # =====================================================
 # Database Initialization
 # =====================================================
+# =====================================================
+# Database Initialization
+# =====================================================
 models.Base.metadata.create_all(bind=engine)
+
+@app.on_event("startup")
+def on_startup():
+    # Simple migration hack for hackathon: Add columns if not exist
+    # This is normally done via Alembic
+    import sqlite3
+    try:
+        # Connect to the database directly
+        conn = sqlite3.connect("expense_tracker.db")
+        cursor = conn.cursor()
+        
+        # Try adding reminder_enabled
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN reminder_enabled BOOLEAN DEFAULT 0")
+            print("✅ Added reminder_enabled column")
+        except Exception:
+            pass # Column likely exists
+            
+        # Try adding reminder_time
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN reminder_time VARCHAR DEFAULT '20:00'")
+            print("✅ Added reminder_time column")
+        except Exception:
+            pass # Column likely exists
+            
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Migration Check Warning: {e}")
+
 
 # =====================================================
 # DB Session Dependency
@@ -56,6 +89,15 @@ def get_db():
         yield db
     finally:
         db.close()
+        
+# =====================================================
+# User Preferences
+# =====================================================
+@app.put("/user/preferences", response_model=schemas.User)
+async def update_preferences(prefs: schemas.UserPreferences, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = crud.get_or_create_user_by_clerk(db, current_user["clerk_id"], current_user["email"])
+    updated_user = crud.update_user_preferences(db, user.id, prefs)
+    return updated_user
 
 # =====================================================
 # Root

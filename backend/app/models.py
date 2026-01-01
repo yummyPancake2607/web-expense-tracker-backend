@@ -9,6 +9,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     google_id = Column(String, unique=True, index=True, nullable=True)  # stores Clerk ID
+    reminder_enabled = Column(Boolean, default=False)
+    reminder_time = Column(String, default="20:00") # HH:MM
 
     expenses = relationship("Expense", back_populates="owner")
     budgets = relationship("Budget", back_populates="owner")
